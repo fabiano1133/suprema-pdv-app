@@ -4,7 +4,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Search, Barcode, PackagePlus, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
-import { createProduct, fetchProducts, fetchProductsPaginated, fetchProductById, findProductByBarcode, updateProduct, generateEtiquetasPdf, type ProductsMeta } from "@/lib/api/products";
+import { createProduct, fetchProducts, fetchProductsPaginated, fetchProductById, findProductBySupplierCode, updateProduct, generateEtiquetasPdf, type ProductsMeta } from "@/lib/api/products";
 import { productFormSchema, type ProductFormValues } from "@/lib/schemas/product";
 import { toBrCurrency, fromBrCurrency } from "@/lib/utils/currencyBr";
 import type { Product } from "@/lib/types";
@@ -49,9 +49,9 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
   const [produtoSelecionado, setProdutoSelecionado] = useState<Product | null>(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState<string | null>(null);
-  const [barcodeInput, setBarcodeInput] = useState("");
+  const [supplierCodeInput, setSupplierCodeInput] = useState("");
   const [produtoEncontrado, setProdutoEncontrado] = useState<Product | null>(null);
-  const [verificandoBarcode, setVerificandoBarcode] = useState(false);
+  const [verificandoSupplierCode, setVerificandoSupplierCode] = useState(false);
   const [erroVerificacao, setErroVerificacao] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [erroSubmit, setErroSubmit] = useState<string | null>(null);
@@ -59,7 +59,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
   const [loadingEtiqueta, setLoadingEtiqueta] = useState(false);
   const [erroEtiqueta, setErroEtiqueta] = useState<string | null>(null);
   const [sucessoEtiqueta, setSucessoEtiqueta] = useState<string | null>(null);
-  const [filterNomeSku, setFilterNomeSku] = useState("");
+  const [filterNomeBarcode, setFilterNomeBarcode] = useState("");
   const isFirstMount = useRef(true);
 
   const {
@@ -90,7 +90,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
       const result = await fetchProductsPaginated({ 
         page, 
         limit,
-        search: filterNomeSku.trim() || undefined
+        search: filterNomeBarcode.trim() || undefined
       });
       setProdutos(result.data);
       setMeta(result.meta);
@@ -101,7 +101,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     } finally {
       setLoadingLista(false);
     }
-  }, [page, limit, filterNomeSku]);
+  }, [page, limit, filterNomeBarcode]);
 
   useEffect(() => {
     if (isFirstMount.current) {
@@ -110,22 +110,22 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
       return;
     }
     carregarProdutos();
-  }, [page, filterNomeSku, carregarProdutos]);
+  }, [page, filterNomeBarcode, carregarProdutos]);
 
   const goToPage = useCallback((newPage: number) => {
     setPage((p) => Math.max(1, Math.min(meta?.totalPages ?? 1, newPage)));
   }, [meta?.totalPages]);
 
-  const handleVerificarBarcode = useCallback(async () => {
-    const barcode = barcodeInput.trim();
-    if (!barcode) {
-      setErroVerificacao("Informe o código de barras para verificar.");
+  const handleVerificarSupplierCode = useCallback(async () => {
+    const code = supplierCodeInput.trim();
+    if (!code) {
+      setErroVerificacao("Informe o código do fornecedor para verificar.");
       return;
     }
     setErroVerificacao(null);
-    setVerificandoBarcode(true);
+    setVerificandoSupplierCode(true);
     try {
-      const encontrado = await findProductByBarcode(barcode);
+      const encontrado = await findProductBySupplierCode(code);
       setProdutoEncontrado(encontrado);
       setEditingId(null);
       await carregarProdutos();
@@ -133,9 +133,9 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
       setErroVerificacao(e instanceof Error ? e.message : "Erro ao verificar.");
       setProdutoEncontrado(null);
     } finally {
-      setVerificandoBarcode(false);
+      setVerificandoSupplierCode(false);
     }
-  }, [barcodeInput, carregarProdutos]);
+  }, [supplierCodeInput, carregarProdutos]);
 
   const handleEditarProdutoEncontrado = useCallback(() => {
     if (!produtoEncontrado) return;
@@ -153,12 +153,12 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     });
     setEditingId(produtoEncontrado.id);
     setProdutoEncontrado(null);
-    setBarcodeInput("");
+    setSupplierCodeInput("");
     setErroVerificacao(null);
   }, [produtoEncontrado, reset]);
 
   const handleVerificarOutro = useCallback(() => {
-    setBarcodeInput("");
+    setSupplierCodeInput("");
     setProdutoEncontrado(null);
     setErroVerificacao(null);
     setEditingId(null);
@@ -170,23 +170,23 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     reset({ name: "", costPrice: 0, profitMargin: 0, price: 0, supplierCode: "", description: "" });
   }, [reset]);
 
-  const handleVerificarBarcodeRef = useRef(handleVerificarBarcode);
-  handleVerificarBarcodeRef.current = handleVerificarBarcode;
+  const handleVerificarSupplierCodeRef = useRef(handleVerificarSupplierCode);
+  handleVerificarSupplierCodeRef.current = handleVerificarSupplierCode;
   useEffect(() => {
-    const barcode = barcodeInput.trim();
-    if (barcode.length < 8) return;
+    const code = supplierCodeInput.trim();
+    if (code.length < 2) return;
     const t = setTimeout(() => {
-      handleVerificarBarcodeRef.current();
+      handleVerificarSupplierCodeRef.current();
     }, 400);
     return () => clearTimeout(t);
-  }, [barcodeInput]);
+  }, [supplierCodeInput]);
 
   // Preenche o campo supplierCode do formulário quando o usuário verificou e o produto não existe
   useEffect(() => {
-    if (barcodeInput.trim() && !produtoEncontrado && !editingId) {
-      setValue("supplierCode", barcodeInput.trim());
+    if (supplierCodeInput.trim() && !produtoEncontrado && !editingId) {
+      setValue("supplierCode", supplierCodeInput.trim());
     }
-  }, [barcodeInput, produtoEncontrado, editingId, setValue]);
+  }, [supplierCodeInput, produtoEncontrado, editingId, setValue]);
 
   const onSubmit = useCallback(
     async (data: ProductFormValues) => {
@@ -286,17 +286,17 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
             <div className="mb-4">
               <label htmlFor="filter-nome-sku" className="flex items-center gap-2 text-xs font-medium text-slate-500">
                 <Search className="h-4 w-4" aria-hidden />
-                Filtrar por nome ou SKU
+                Filtrar por nome ou código de barras
               </label>
               <input
                 id="filter-nome-sku"
                 type="text"
-                value={filterNomeSku}
+                value={filterNomeBarcode}
                 onChange={(e) => {
-                  setFilterNomeSku(e.target.value);
+                  setFilterNomeBarcode(e.target.value);
                   setPage(1);
                 }}
-                placeholder="Digite nome ou SKU…"
+                placeholder="Digite nome ou código de barras…"
                 className="input-field mt-1 max-w-md"
               />
             </div>
@@ -305,7 +305,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
             <LoadingState message="Carregando produtos…" />
           ) : produtos.length === 0 ? (
             <div className="rounded-xl border border-slate-100 bg-slate-50/50 py-12 text-center text-slate-500">
-              {filterNomeSku.trim() ? "Nenhum produto encontrado para o filtro." : "Nenhum produto cadastrado."}
+              {filterNomeBarcode.trim() ? "Nenhum produto encontrado para o filtro." : "Nenhum produto cadastrado."}
             </div>
           ) : (
             <>
@@ -389,27 +389,27 @@ disabled={!meta.hasPreviousPage}
             {erroVerificacao && <div className="mt-3"><Alert message={erroVerificacao} variant="error" /></div>}
             <div className="mt-3 flex flex-wrap items-end gap-3">
               <div className="min-w-[180px] flex-1">
-                <label htmlFor="barcode-verify" className="block text-sm font-medium text-slate-700">
-                  Código de barras
+                <label htmlFor="supplier-code-verify" className="block text-sm font-medium text-slate-700">
+                  Código do fornecedor
                 </label>
                 <input
-                  id="barcode-verify"
+                  id="supplier-code-verify"
                   type="text"
-                  value={barcodeInput}
-                  onChange={(e) => setBarcodeInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleVerificarBarcode())}
-                  placeholder="Ex.: 7891234567890"
-                  className="input-field mt-1"
-                  disabled={verificandoBarcode}
+                  value={supplierCodeInput}
+                  onChange={(e) => setSupplierCodeInput(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleVerificarSupplierCode())}
+                  placeholder="Ex.: FORN-12345"
+                  className="input-field mt-1 font-mono"
+                  disabled={verificandoSupplierCode}
                 />
               </div>
               <button
                 type="button"
-                onClick={handleVerificarBarcode}
-                disabled={verificandoBarcode}
+                onClick={handleVerificarSupplierCode}
+                disabled={verificandoSupplierCode}
                 className="btn-secondary rounded-lg px-4 py-2.5 font-medium disabled:opacity-50"
               >
-                {verificandoBarcode ? "Verificando…" : "Verificar"}
+                {verificandoSupplierCode ? "Verificando…" : "Verificar"}
               </button>
             </div>
             {produtoEncontrado && !editingId && (
@@ -417,7 +417,7 @@ disabled={!meta.hasPreviousPage}
                 <p className="font-medium text-amber-800">Produto já cadastrado</p>
                 <p className="mt-1 text-sm text-amber-700">
                   {produtoEncontrado.name}
-                  {produtoEncontrado.barcode && <span className="ml-2 font-mono text-amber-600">· {produtoEncontrado.barcode}</span>}
+                  {produtoEncontrado.supplierCode && <span className="ml-2 font-mono text-amber-600">· {produtoEncontrado.supplierCode}</span>}
                 </p>
                 <p className="mt-0.5 text-sm text-slate-600">
                   Preço atual: R$ {produtoEncontrado.price.toFixed(2).replace(".", ",")} · O preço pode ter alterado.
@@ -433,7 +433,7 @@ disabled={!meta.hasPreviousPage}
                 </div>
               </div>
             )}
-            {barcodeInput.trim() && !verificandoBarcode && !produtoEncontrado && !editingId && (
+            {supplierCodeInput.trim() && !verificandoSupplierCode && !produtoEncontrado && !editingId && (
               <p className="mt-3 text-sm text-emerald-700">
                 Produto não encontrado. Você pode cadastrar abaixo.
               </p>

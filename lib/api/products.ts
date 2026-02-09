@@ -215,6 +215,17 @@ export async function findProductBySku(sku: string): Promise<Product | null> {
   return list.find((p) => p.sku?.trim() === normalized) ?? null;
 }
 
+/**
+ * Busca produto por código do fornecedor (lista produtos e filtra no front).
+ * Compara com trim (case-sensitive).
+ */
+export async function findProductBySupplierCode(supplierCode: string): Promise<Product | null> {
+  const list = await fetchProducts();
+  const normalized = supplierCode.trim();
+  if (!normalized) return null;
+  return list.find((p) => p.supplierCode?.trim() === normalized) ?? null;
+}
+
 /** Pedido de etiqueta (produto + quantidade). Linguagem ubíqua: etiquetas + products. */
 export interface PedidoEtiqueta {
   productId: string;
