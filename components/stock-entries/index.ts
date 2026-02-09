@@ -1,0 +1,1 @@
+export { StockEntriesPageClient } from "./StockEntriesPageClient";
