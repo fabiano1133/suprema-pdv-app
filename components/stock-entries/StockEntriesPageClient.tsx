@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Barcode, Plus, ListOrdered } from "lucide-react";
-import { fetchProducts, findProductByBarcode, createProduct } from "@/lib/api/products";
+import { fetchProducts, findProductBySupplierCode, createProduct } from "@/lib/api/products";
 import { createStockEntry, fetchStockEntries, fetchStockEntryById, updateStockEntry, type StockEntry, type StockEntryLine } from "@/lib/api/stockEntries";
 import type { Product } from "@/lib/types";
 import { formatDateBr } from "@/lib/utils/dateBr";
@@ -89,21 +89,21 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
   const [erroDetalhe, setErroDetalhe] = useState<string | null>(null);
   const [reference, setReference] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [barcodeInput, setBarcodeInput] = useState("");
+  const [supplierCodeInput, setSupplierCodeInput] = useState("");
   const [quantidade, setQuantidade] = useState("1");
   const [linhas, setLinhas] = useState<StockEntryLine[]>([]);
   const [loading, setLoading] = useState(false);
-  const [buscandoBarcode, setBuscandoBarcode] = useState(false);
+  const [buscandoSupplierCode, setBuscandoSupplierCode] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const hasRestoredDraft = useRef(false);
-  const barcodeInputRef = useRef<HTMLInputElement>(null);
-  const focusBarcodeAfterScanRef = useRef(false);
+  const supplierCodeInputRef = useRef<HTMLInputElement>(null);
+  const focusSupplierCodeAfterScanRef = useRef(false);
   const qtyParaNovoProdutoRef = useRef(1);
 
   const [showModalNovoProduto, setShowModalNovoProduto] = useState(false);
-  const [barcodeParaCadastro, setBarcodeParaCadastro] = useState("");
+  const [supplierCodeParaCadastro, setSupplierCodeParaCadastro] = useState("");
   const [nomeNovoProduto, setNomeNovoProduto] = useState("");
   const [costPriceNovo, setCostPriceNovo] = useState(0);
   const [profitMarginNovo, setProfitMarginNovo] = useState(0);
@@ -213,21 +213,21 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
 
   const qtyNum = Math.max(1, Number(quantidade) || 1);
 
-  async function handleAdicionarPorBarcode(e: React.MouseEvent | React.FormEvent) {
+  async function handleAdicionarPorSupplierCode(e: React.MouseEvent | React.FormEvent) {
     e.preventDefault();
-    const barcode = barcodeInput.trim();
-    if (!barcode) {
-      setErro("Informe o código de barras.");
+    const code = supplierCodeInput.trim();
+    if (!code) {
+      setErro("Informe o código do fornecedor.");
       return;
     }
     setErro(null);
     setSucesso(null);
-    setBuscandoBarcode(true);
+    setBuscandoSupplierCode(true);
     try {
-      const produto = await findProductByBarcode(barcode);
+      const produto = await findProductBySupplierCode(code);
       if (!produto) {
         qtyParaNovoProdutoRef.current = qtyNum;
-        setBarcodeParaCadastro(barcode);
+        setSupplierCodeParaCadastro(code);
         setNomeNovoProduto("");
         setCostPriceNovo(0);
         setProfitMarginNovo(0);
@@ -238,7 +238,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         setShowModalNovoProduto(true);
         return;
       }
-      focusBarcodeAfterScanRef.current = true;
+      focusSupplierCodeAfterScanRef.current = true;
       setLinhas((prev) => {
         const idx = prev.findIndex((l) => l.itemId === produto.id);
         if (idx >= 0) {
@@ -248,19 +248,19 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         }
         return [...prev, { itemId: produto.id, quantity: qtyNum }];
       });
-      setBarcodeInput("");
+      setSupplierCodeInput("");
       setQuantidade("1");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao buscar produto.");
     } finally {
-      setBuscandoBarcode(false);
+      setBuscandoSupplierCode(false);
     }
   }
 
   useEffect(() => {
-    if (!buscandoBarcode && focusBarcodeAfterScanRef.current) {
-      focusBarcodeAfterScanRef.current = false;
-      const el = barcodeInputRef.current;
+    if (!buscandoSupplierCode && focusSupplierCodeAfterScanRef.current) {
+      focusSupplierCodeAfterScanRef.current = false;
+      const el = supplierCodeInputRef.current;
       if (el) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -269,7 +269,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         });
       }
     }
-  }, [buscandoBarcode]);
+  }, [buscandoSupplierCode]);
 
   function handleRemoverLinha(itemId: string) {
     setLinhas((prev) => prev.filter((l) => l.itemId !== itemId));
@@ -278,7 +278,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
 
   function handleFecharModalNovoProduto() {
     setShowModalNovoProduto(false);
-    setBarcodeParaCadastro("");
+    setSupplierCodeParaCadastro("");
     setErroModal(null);
     setCurrencyEditModal(null);
   }
@@ -307,7 +307,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         name,
         costPrice,
         price,
-        supplierCode: barcodeParaCadastro.trim() || undefined,
+        supplierCode: supplierCodeParaCadastro.trim() || undefined,
         description: descriptionNovo.trim() || undefined,
       });
       setProdutos((prev) => [...prev, novo]);
@@ -321,9 +321,9 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         }
         return [...prev, { itemId: novo.id, quantity: qty }];
       });
-      setBarcodeInput("");
+      setSupplierCodeInput("");
       setQuantidade("1");
-      focusBarcodeAfterScanRef.current = true;
+      focusSupplierCodeAfterScanRef.current = true;
       setSucesso("Produto cadastrado e adicionado ao pedido.");
       handleFecharModalNovoProduto();
     } catch (err) {
@@ -395,7 +395,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
               Produto não encontrado — Cadastrar
             </h2>
             <p className="mb-4 text-sm text-slate-600">
-              O código de barras <span className="font-mono font-medium">{barcodeParaCadastro}</span> não está cadastrado. Preencha os dados para criar o produto e adicioná-lo ao pedido.
+              O código do fornecedor <span className="font-mono font-medium">{supplierCodeParaCadastro}</span> não está cadastrado. Preencha os dados para criar o produto e adicioná-lo ao pedido.
             </p>
             <form onSubmit={handleCadastrarProdutoNoModal}>
               {erroModal && <div className="mb-4"><Alert message={erroModal} variant="error" /></div>}
@@ -418,8 +418,8 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
                   <input
                     id="modal-supplierCode"
                     type="text"
-                    value={barcodeParaCadastro}
-                    onChange={(e) => setBarcodeParaCadastro(e.target.value)}
+                    value={supplierCodeParaCadastro}
+                    onChange={(e) => setSupplierCodeParaCadastro(e.target.value)}
                     placeholder="Ex.: FORN-12345"
                     className="input-field mt-1 w-full font-mono"
                     disabled={loadingCadastro}
@@ -610,24 +610,24 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="stock-barcode" className="block text-sm font-medium text-slate-700">
-                Código de barras
+              <label htmlFor="stock-supplier-code" className="block text-sm font-medium text-slate-700">
+                Código do fornecedor
               </label>
               <input
-                ref={barcodeInputRef}
-                id="stock-barcode"
+                ref={supplierCodeInputRef}
+                id="stock-supplier-code"
                 type="text"
-                value={barcodeInput}
-                onChange={(e) => setBarcodeInput(e.target.value)}
+                value={supplierCodeInput}
+                onChange={(e) => setSupplierCodeInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    handleAdicionarPorBarcode(e);
+                    handleAdicionarPorSupplierCode(e);
                   }
                 }}
-                placeholder="Leia ou digite o código de barras"
+                placeholder="Leia ou digite o código do fornecedor"
                 className="input-field mt-1"
-                disabled={loading || buscandoBarcode}
+                disabled={loading || buscandoSupplierCode}
                 autoComplete="off"
               />
             </div>
@@ -651,11 +651,11 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
           <div className="mt-3">
             <button
               type="button"
-              onClick={handleAdicionarPorBarcode}
-              disabled={!barcodeInput.trim() || loading || buscandoBarcode}
+              onClick={handleAdicionarPorSupplierCode}
+              disabled={!supplierCodeInput.trim() || loading || buscandoSupplierCode}
               className="btn-secondary flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
-              {buscandoBarcode ? "Buscando…" : (
+              {buscandoSupplierCode ? "Buscando…" : (
                 <>
                   <Plus className="h-4 w-4" aria-hidden />
                   Adicionar à lista
