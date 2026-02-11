@@ -254,8 +254,14 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
       const blob = await generateEtiquetasPdf({
         produtos: [{ productId: produtoSelecionado.id, quantity: qty }],
       });
-      openPdfForPrint(blob);
-      setSucessoEtiqueta("PDF gerado. Use o diálogo de impressão para imprimir.");
+      const result = openPdfForPrint(blob);
+      if (result === "new_tab") {
+        setSucessoEtiqueta("PDF aberto em nova aba. Use Arquivo > Imprimir (ou Ctrl+P) na aba do PDF.");
+      } else if (result === "printed") {
+        setSucessoEtiqueta("PDF gerado. Use o diálogo de impressão para imprimir.");
+      } else {
+        setErroEtiqueta("Não foi possível abrir o PDF. Verifique se o navegador permite pop-ups para este site.");
+      }
     } catch (e) {
       setErroEtiqueta(e instanceof Error ? e.message : "Erro ao gerar etiquetas PDF.");
     } finally {

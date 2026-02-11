@@ -252,8 +252,13 @@ export async function generateEtiquetasPdf(body: GenerateEtiquetasPdfBody): Prom
     }),
   });
   if (!res.ok) await throwApiError(res, "Erro ao gerar etiquetas PDF.");
-  const blob = await res.blob();
-  if (!blob.type.startsWith("application/pdf"))
+  let blob = await res.blob();
+  const contentType = blob.type || res.headers.get("content-type") || "";
+  if (!contentType.toLowerCase().includes("application/pdf")) {
     throw new Error("Resposta não é um PDF válido.");
+  }
+  if (!blob.type || !blob.type.startsWith("application/pdf")) {
+    blob = new Blob([blob], { type: "application/pdf" });
+  }
   return blob;
 }

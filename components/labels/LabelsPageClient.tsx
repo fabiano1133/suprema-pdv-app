@@ -74,8 +74,14 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
     setLoading(true);
     try {
       const blob = await generateEtiquetasPdf({ produtos: linhas });
-      openPdfForPrint(blob);
-      setSucesso("PDF gerado. Use o diálogo de impressão para imprimir.");
+      const result = openPdfForPrint(blob);
+      if (result === "new_tab") {
+        setSucesso("PDF aberto em nova aba. Use Arquivo > Imprimir (ou Ctrl+P) na aba do PDF.");
+      } else if (result === "printed") {
+        setSucesso("PDF gerado. Use o diálogo de impressão para imprimir.");
+      } else {
+        setErro("Não foi possível abrir o PDF. Verifique se o navegador permite pop-ups para este site.");
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao gerar etiquetas PDF.");
     } finally {
