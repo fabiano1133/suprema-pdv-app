@@ -4,7 +4,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Search, Barcode, PackagePlus, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
-import { createProduct, fetchProducts, fetchProductsPaginated, fetchProductById, findProductBySupplierCode, updateProduct, generateEtiquetasPdf, type ProductsMeta } from "@/lib/api/products";
+import { createProduct, fetchProducts, fetchProductsPaginated, fetchProductById, findProductBySupplierCode, updateProduct, generateEtiquetasPdf, type ProductsMeta, type LabelModel } from "@/lib/api/products";
 import { productFormSchema, type ProductFormValues } from "@/lib/schemas/product";
 import { toBrCurrency, fromBrCurrency } from "@/lib/utils/currencyBr";
 import type { Product } from "@/lib/types";
@@ -56,6 +56,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
   const [editingId, setEditingId] = useState<string | null>(null);
   const [erroSubmit, setErroSubmit] = useState<string | null>(null);
   const [qtyEtiqueta, setQtyEtiqueta] = useState("1");
+  const [modelEtiqueta, setModelEtiqueta] = useState<LabelModel>("95x12");
   const [loadingEtiqueta, setLoadingEtiqueta] = useState(false);
   const [erroEtiqueta, setErroEtiqueta] = useState<string | null>(null);
   const [sucessoEtiqueta, setSucessoEtiqueta] = useState<string | null>(null);
@@ -253,6 +254,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     try {
       const blob = await generateEtiquetasPdf({
         produtos: [{ productId: produtoSelecionado.id, quantity: qty }],
+        model: modelEtiqueta,
       });
       const result = openPdfForPrint(blob);
       if (result === "new_tab") {
@@ -267,7 +269,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     } finally {
       setLoadingEtiqueta(false);
     }
-  }, [produtoSelecionado, qtyEtiqueta]);
+  }, [produtoSelecionado, qtyEtiqueta, modelEtiqueta]);
 
   const mostrarFormulario = !produtoEncontrado || editingId !== null;
 
@@ -716,6 +718,19 @@ disabled={!meta.hasPreviousPage}
                         className="input-field mt-1 w-24"
                         disabled={loadingEtiqueta}
                       />
+                    </div>
+                    <div>
+                      <label htmlFor="model-etiqueta-modal" className="block text-xs font-medium text-slate-500">Layout</label>
+                      <select
+                        id="model-etiqueta-modal"
+                        value={modelEtiqueta}
+                        onChange={(e) => setModelEtiqueta(e.target.value as LabelModel)}
+                        className="input-field mt-1 w-48"
+                        disabled={loadingEtiqueta}
+                      >
+                        <option value="95x12">95×12 mm</option>
+                        <option value="26x15x3">26×15×3</option>
+                      </select>
                     </div>
                     <button
                       type="button"

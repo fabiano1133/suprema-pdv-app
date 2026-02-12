@@ -232,24 +232,31 @@ export interface PedidoEtiqueta {
   quantity: number;
 }
 
-/** Body para gerar PDF de etiquetas BOPP. Linguagem ubíqua: etiquetas. */
+/** Modelos de etiqueta aceitos pelo backend: 95x12 (padrão) ou 26x15x3 (3 por linha). */
+export type LabelModel = "95x12" | "26x15x3";
+
+/** Body para gerar PDF de etiquetas. Linguagem ubíqua: etiquetas. */
 export interface GenerateEtiquetasPdfBody {
   produtos: PedidoEtiqueta[];
+  /** Se omitido, o backend usa 95x12. */
+  model?: LabelModel;
 }
 
 /**
- * Gera PDF de etiquetas BOPP no backend.
+ * Gera PDF de etiquetas no backend.
  * POST /api/v1/items/labels/pdf
- * Body da API: { items: [{ itemId, quantity }] }
+ * Body: { items: [{ itemId, quantity }], model?: "95x12" | "26x15x3" }
  */
 export async function generateEtiquetasPdf(body: GenerateEtiquetasPdfBody): Promise<Blob> {
   const url = getApiUrl("/api/v1/items/labels/pdf");
+  const payload: { items: { itemId: string; quantity: number }[]; model?: LabelModel } = {
+    items: body.produtos.map((p) => ({ itemId: p.productId, quantity: p.quantity })),
+  };
+  if (body.model) payload.model = body.model;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      items: body.produtos.map((p) => ({ itemId: p.productId, quantity: p.quantity })),
-    }),
+    body: JSON.stringify(payload),
   });
   if (!res.ok) await throwApiError(res, "Erro ao gerar etiquetas PDF.");
   let blob = await res.blob();

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Tag, Plus, FileOutput, Trash2 } from "lucide-react";
-import { fetchProducts, generateEtiquetasPdf } from "@/lib/api/products";
+import { fetchProducts, generateEtiquetasPdf, type LabelModel } from "@/lib/api/products";
 import type { Product } from "@/lib/types";
 import type { PedidoEtiqueta } from "@/lib/api/products";
 import { PageTitle, Alert, LoadingState } from "@/components/ui";
@@ -20,6 +20,7 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
   const [productId, setProductId] = useState<string>("");
   const [quantidade, setQuantidade] = useState<string>("");
   const [linhas, setLinhas] = useState<PedidoEtiqueta[]>([]);
+  const [model, setModel] = useState<LabelModel>("95x12");
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
@@ -73,7 +74,7 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
     setSucesso(null);
     setLoading(true);
     try {
-      const blob = await generateEtiquetasPdf({ produtos: linhas });
+      const blob = await generateEtiquetasPdf({ produtos: linhas, model });
       const result = openPdfForPrint(blob);
       if (result === "new_tab") {
         setSucesso("PDF aberto em nova aba. Use Arquivo > Imprimir (ou Ctrl+P) na aba do PDF.");
@@ -142,6 +143,21 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
               className="input-field mt-1"
               disabled={loading}
             />
+          </div>
+          <div className="sm:col-span-2">
+            <label htmlFor="label-model" className="block text-sm font-medium text-slate-700">
+              Layout
+            </label>
+            <select
+              id="label-model"
+              value={model}
+              onChange={(e) => setModel(e.target.value as LabelModel)}
+              className="input-field mt-1 max-w-xs"
+              disabled={loading}
+            >
+              <option value="95x12">95×12 mm (padrão)</option>
+              <option value="26x15x3">26×15×3 (3 etiquetas por linha)</option>
+            </select>
           </div>
         </div>
         )}
