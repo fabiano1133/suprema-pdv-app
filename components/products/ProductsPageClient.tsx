@@ -61,6 +61,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
   const [erroEtiqueta, setErroEtiqueta] = useState<string | null>(null);
   const [sucessoEtiqueta, setSucessoEtiqueta] = useState<string | null>(null);
   const [filterNomeBarcode, setFilterNomeBarcode] = useState("");
+  const [filterDebounced, setFilterDebounced] = useState("");
   const isFirstMount = useRef(true);
 
   const {
@@ -88,10 +89,10 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     setLoadingLista(true);
     setErroLista(null);
     try {
-      const result = await fetchProductsPaginated({ 
-        page, 
+      const result = await fetchProductsPaginated({
+        page,
         limit,
-        search: filterNomeBarcode.trim() || undefined
+        search: filterDebounced.trim() || undefined,
       });
       setProdutos(result.data);
       setMeta(result.meta);
@@ -102,7 +103,20 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     } finally {
       setLoadingLista(false);
     }
-  }, [page, limit, filterNomeBarcode]);
+  }, [page, limit, filterDebounced]);
+
+  const prevFilterDebouncedRef = useRef("");
+  useEffect(() => {
+    const trimmed = filterNomeBarcode.trim();
+    const t = setTimeout(() => {
+      setFilterDebounced(trimmed);
+      if (trimmed !== prevFilterDebouncedRef.current) {
+        setPage(1);
+        prevFilterDebouncedRef.current = trimmed;
+      }
+    }, 400);
+    return () => clearTimeout(t);
+  }, [filterNomeBarcode]);
 
   useEffect(() => {
     if (isFirstMount.current) {
@@ -111,7 +125,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
       return;
     }
     carregarProdutos();
-  }, [page, filterNomeBarcode, carregarProdutos]);
+  }, [page, filterDebounced, carregarProdutos]);
 
   const goToPage = useCallback((newPage: number) => {
     setPage((p) => Math.max(1, Math.min(meta?.totalPages ?? 1, newPage)));
@@ -300,10 +314,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
                 id="filter-nome-sku"
                 type="text"
                 value={filterNomeBarcode}
-                onChange={(e) => {
-                  setFilterNomeBarcode(e.target.value);
-                  setPage(1);
-                }}
+                onChange={(e) => setFilterNomeBarcode(e.target.value)}
                 placeholder="Digite nome ou código de barras…"
                 className="input-field mt-1 max-w-md"
               />

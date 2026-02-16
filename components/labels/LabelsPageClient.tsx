@@ -1,11 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { Tag, Plus, FileOutput, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Tag, Plus, FileOutput, Trash2, Search } from "lucide-react";
 import { fetchProducts, generateEtiquetasPdf, type LabelModel } from "@/lib/api/products";
 import type { Product } from "@/lib/types";
 import type { PedidoEtiqueta } from "@/lib/api/products";
-import { PageTitle, Alert, LoadingState } from "@/components/ui";
+import { PageTitle, LoadingState } from "@/components/ui";
 import { openPdfForPrint } from "./openPdfForPrint";
 
 interface LabelsPageClientProps {
@@ -17,6 +17,8 @@ interface LabelsPageClientProps {
 export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClientProps) {
   const [produtos, setProdutos] = useState<Product[]>(initialProducts);
   const [loadingProdutos, setLoadingProdutos] = useState(initialProducts.length === 0);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [productId, setProductId] = useState<string>("");
   const [quantidade, setQuantidade] = useState<string>("");
   const [linhas, setLinhas] = useState<PedidoEtiqueta[]>([]);
@@ -24,6 +26,7 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const produtoSelecionado = produtos.find((p) => p.id === productId);
 
@@ -41,9 +44,39 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
     }
   }, []);
 
+  // Sempre carrega a lista completa (sem paginação) para a busca de produtos para etiquetas.
   useEffect(() => {
-    if (initialProducts.length === 0) carregarProdutos();
-  }, [initialProducts.length, carregarProdutos]);
+    carregarProdutos();
+  }, [carregarProdutos]);
+
+  useEffect(() => {
+    const term = searchInput.trim().toLowerCase();
+    if (!term) {
+      setSearchResults([]);
+      return;
+    }
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      const filtered = produtos.filter(
+        (p) =>
+          p.name.toLowerCase().includes(term) ||
+          (p.barcode?.toLowerCase().includes(term) ?? false) ||
+          (p.supplierCode?.toLowerCase().includes(term) ?? false)
+      );
+      setSearchResults(filtered);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [searchInput, produtos]);
+
+  function handleSelecionarProduto(p: Product) {
+    setProductId(p.id);
+    setQuantidade(String(Math.max(0, p.quantity)));
+    setSearchInput("");
+    setSearchResults([]);
+    setProdutos((prev) => (prev.some((x) => x.id === p.id) ? prev : [...prev, p]));
+  }
 
   const qtyNum = Number(quantidade) || 0;
 
@@ -60,6 +93,8 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
       return [...prev, { productId: produtoSelecionado.id, quantity: qtyNum }];
     });
     setSucesso(null);
+    setProductId("");
+    setQuantidade("");
   }
 
   function handleRemoverLinha(productId: string) {
@@ -106,44 +141,75 @@ export function LabelsPageClient({ initialProducts, embedded }: LabelsPageClient
           <LoadingState message="Carregando produtos…" />
         ) : (
         <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor="product-select" className="block text-sm font-medium text-slate-700">
-              Produto
+          <div className="relative sm:col-span-2">
+            <label htmlFor="product-search" className="block text-sm font-medium text-slate-700">
+              Buscar produto (nome, código de barras ou código do fornecedor)
             </label>
-            <select
-              id="product-select"
-              value={productId}
-              onChange={(e) => setProductId(e.target.value)}
-              className="input-field mt-1"
-              disabled={loading || loadingProdutos}
-            >
-              <option value="">Selecione um produto</option>
-              {produtos.map((produto) => (
-                <option key={produto.id} value={produto.id}>
-                  {produto.sku ?? produto.id.slice(0, 8)} — {produto.name}
-                </option>
-              ))}
-            </select>
-            {loadingProdutos && produtos.length > 0 && (
-              <p className="mt-1 text-xs text-slate-500">Atualizando lista…</p>
+            <div className="relative mt-1">
+              {/* <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" aria-hidden /> */}
+              <input
+                id="product-search"
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onFocus={() => searchInput.trim() && setSearchResults(searchResults.length ? searchResults : [])}
+                placeholder="Nome, código de barras ou código do fornecedor…"
+                className="input-field w-full pl-10"
+                disabled={loading || loadingProdutos}
+                autoComplete="off"
+              />
+            </div>
+            {searchResults.length > 0 && searchInput.trim() && (
+              <ul
+                className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                role="listbox"
+              >
+                {searchResults.map((p) => (
+                  <li key={p.id} role="option">
+                    <button
+                      type="button"
+                      onClick={() => handleSelecionarProduto(p)}
+                      className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                    >
+                      <span className="font-medium text-slate-800">{p.name}</span>
+                      <span className="text-xs text-slate-500">
+                        {p.barcode ? `Cod. barras: ${p.barcode}` : ""}
+                        {p.barcode && (p.sku || p.supplierCode) ? " · " : ""}
+                        {p.supplierCode ? `Fornec.: ${p.supplierCode}` : ""}
+                        {p.supplierCode && p.sku ? " · " : ""}
+                        {p.sku ? `SKU: ${p.sku}` : ""}
+                        {" · "}Estoque: {p.quantity}
+                      </span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
             )}
           </div>
-          <div>
-            <label htmlFor="qty" className="block text-sm font-medium text-slate-700">
-              Quantidade
-            </label>
-            <input
-              id="qty"
-              type="number"
-              min={1}
-              max={500}
-              placeholder="Qtd"
-              value={quantidade}
-              onChange={(e) => setQuantidade(e.target.value)}
-              className="input-field mt-1"
-              disabled={loading}
-            />
-          </div>
+          {produtoSelecionado && (
+            <>
+              <div>
+                <p className="text-xs font-medium text-slate-500">Produto selecionado</p>
+                <p className="mt-0.5 font-medium text-slate-800">{produtoSelecionado.name}</p>
+                <p className="text-xs text-slate-500">Estoque disponível: {produtoSelecionado.quantity}</p>
+              </div>
+              <div>
+                <label htmlFor="qty" className="block text-sm font-medium text-slate-700">
+                  Quantidade de etiquetas
+                </label>
+                <input
+                  id="qty"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={quantidade}
+                  onChange={(e) => setQuantidade(e.target.value)}
+                  className="input-field mt-1"
+                  disabled={loading}
+                />
+              </div>
+            </>
+          )}
           <div className="sm:col-span-2">
             <label htmlFor="label-model" className="block text-sm font-medium text-slate-700">
               Layout
