@@ -4,7 +4,7 @@ import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Search, Barcode, PackagePlus, Pencil, ChevronLeft, ChevronRight } from "lucide-react";
-import { createProduct, fetchProducts, fetchProductsPaginated, fetchProductById, findProductBySupplierCode, updateProduct, generateEtiquetasPdf, type ProductsMeta, type LabelModel } from "@/lib/api/products";
+import { createProduct, fetchProducts, fetchProductsPaginated, fetchProductById, updateProduct, generateEtiquetasPdf, type ProductsMeta, type LabelModel } from "@/lib/api/products";
 import { productFormSchema, type ProductFormValues } from "@/lib/schemas/product";
 import { toBrCurrency, fromBrCurrency } from "@/lib/utils/currencyBr";
 import type { Product } from "@/lib/types";
@@ -49,9 +49,12 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
   const [produtoSelecionado, setProdutoSelecionado] = useState<Product | null>(null);
   const [loadingDetalhe, setLoadingDetalhe] = useState(false);
   const [erroDetalhe, setErroDetalhe] = useState<string | null>(null);
-  const [supplierCodeInput, setSupplierCodeInput] = useState("");
+  const [produtosParaBusca, setProdutosParaBusca] = useState<Product[]>([]);
+  const [loadingProdutosParaBusca, setLoadingProdutosParaBusca] = useState(false);
+  const [searchInput, setSearchInput] = useState("");
+  const [searchResults, setSearchResults] = useState<Product[]>([]);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [produtoEncontrado, setProdutoEncontrado] = useState<Product | null>(null);
-  const [verificandoSupplierCode, setVerificandoSupplierCode] = useState(false);
   const [erroVerificacao, setErroVerificacao] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [erroSubmit, setErroSubmit] = useState<string | null>(null);
@@ -62,6 +65,8 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
   const [sucessoEtiqueta, setSucessoEtiqueta] = useState<string | null>(null);
   const [filterNomeBarcode, setFilterNomeBarcode] = useState("");
   const [filterDebounced, setFilterDebounced] = useState("");
+  const [filterSearchResults, setFilterSearchResults] = useState<Product[]>([]);
+  const filterSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isFirstMount = useRef(true);
 
   const {
@@ -118,6 +123,27 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     return () => clearTimeout(t);
   }, [filterNomeBarcode]);
 
+  // Dropdown do filtro da listagem: apenas nome ou código de barras (300ms debounce)
+  useEffect(() => {
+    const term = filterNomeBarcode.trim().toLowerCase();
+    if (!term) {
+      setFilterSearchResults([]);
+      return;
+    }
+    if (filterSearchTimeoutRef.current) clearTimeout(filterSearchTimeoutRef.current);
+    filterSearchTimeoutRef.current = setTimeout(() => {
+      const filtered = produtosParaBusca.filter(
+        (p) =>
+          p.name.toLowerCase().includes(term) ||
+          (p.barcode?.toLowerCase().includes(term) ?? false)
+      );
+      setFilterSearchResults(filtered);
+    }, 300);
+    return () => {
+      if (filterSearchTimeoutRef.current) clearTimeout(filterSearchTimeoutRef.current);
+    };
+  }, [filterNomeBarcode, produtosParaBusca]);
+
   useEffect(() => {
     if (isFirstMount.current) {
       isFirstMount.current = false;
@@ -127,30 +153,50 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     carregarProdutos();
   }, [page, filterDebounced, carregarProdutos]);
 
+  // Lista completa para o bloco "Buscar produto" (mesma lógica da tela de Etiquetas)
+  useEffect(() => {
+    setLoadingProdutosParaBusca(true);
+    setErroVerificacao(null);
+    fetchProducts()
+      .then(setProdutosParaBusca)
+      .catch((e) => {
+        setErroVerificacao(e instanceof Error ? e.message : "Erro ao carregar produtos para busca.");
+        setProdutosParaBusca([]);
+      })
+      .finally(() => setLoadingProdutosParaBusca(false));
+  }, []);
+
+  useEffect(() => {
+    const term = searchInput.trim().toLowerCase();
+    if (!term) {
+      setSearchResults([]);
+      return;
+    }
+    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    searchTimeoutRef.current = setTimeout(() => {
+      const filtered = produtosParaBusca.filter(
+        (p) =>
+          p.name.toLowerCase().includes(term) ||
+          (p.barcode?.toLowerCase().includes(term) ?? false) ||
+          (p.supplierCode?.toLowerCase().includes(term) ?? false)
+      );
+      setSearchResults(filtered);
+    }, 300);
+    return () => {
+      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+    };
+  }, [searchInput, produtosParaBusca]);
+
   const goToPage = useCallback((newPage: number) => {
     setPage((p) => Math.max(1, Math.min(meta?.totalPages ?? 1, newPage)));
   }, [meta?.totalPages]);
 
-  const handleVerificarSupplierCode = useCallback(async () => {
-    const code = supplierCodeInput.trim();
-    if (!code) {
-      setErroVerificacao("Informe o código do fornecedor para verificar.");
-      return;
-    }
+  const handleSelecionarProdutoNaBusca = useCallback((p: Product) => {
+    setProdutoEncontrado(p);
+    setSearchInput("");
+    setSearchResults([]);
     setErroVerificacao(null);
-    setVerificandoSupplierCode(true);
-    try {
-      const encontrado = await findProductBySupplierCode(code);
-      setProdutoEncontrado(encontrado);
-      setEditingId(null);
-      await carregarProdutos();
-    } catch (e) {
-      setErroVerificacao(e instanceof Error ? e.message : "Erro ao verificar.");
-      setProdutoEncontrado(null);
-    } finally {
-      setVerificandoSupplierCode(false);
-    }
-  }, [supplierCodeInput, carregarProdutos]);
+  }, []);
 
   const handleEditarProdutoEncontrado = useCallback(() => {
     if (!produtoEncontrado) return;
@@ -168,12 +214,12 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     });
     setEditingId(produtoEncontrado.id);
     setProdutoEncontrado(null);
-    setSupplierCodeInput("");
+    setSearchInput("");
     setErroVerificacao(null);
   }, [produtoEncontrado, reset]);
 
   const handleVerificarOutro = useCallback(() => {
-    setSupplierCodeInput("");
+    setSearchInput("");
     setProdutoEncontrado(null);
     setErroVerificacao(null);
     setEditingId(null);
@@ -185,23 +231,12 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
     reset({ name: "", costPrice: 0, profitMargin: 0, price: 0, supplierCode: "", description: "" });
   }, [reset]);
 
-  const handleVerificarSupplierCodeRef = useRef(handleVerificarSupplierCode);
-  handleVerificarSupplierCodeRef.current = handleVerificarSupplierCode;
+  // Preenche o campo supplierCode quando a busca não encontrou produto (igual à lógica de Etiquetas)
   useEffect(() => {
-    const code = supplierCodeInput.trim();
-    if (code.length < 2) return;
-    const t = setTimeout(() => {
-      handleVerificarSupplierCodeRef.current();
-    }, 400);
-    return () => clearTimeout(t);
-  }, [supplierCodeInput]);
-
-  // Preenche o campo supplierCode do formulário quando o usuário verificou e o produto não existe
-  useEffect(() => {
-    if (supplierCodeInput.trim() && !produtoEncontrado && !editingId) {
-      setValue("supplierCode", supplierCodeInput.trim());
+    if (searchInput.trim() && searchResults.length === 0 && !produtoEncontrado && !editingId) {
+      setValue("supplierCode", searchInput.trim());
     }
-  }, [supplierCodeInput, produtoEncontrado, editingId, setValue]);
+  }, [searchInput, searchResults.length, produtoEncontrado, editingId, setValue]);
 
   const onSubmit = useCallback(
     async (data: ProductFormValues) => {
@@ -218,6 +253,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
           await carregarProdutos();
           setEditingId(null);
           reset({ name: "", costPrice: 0, profitMargin: 0, price: 0, supplierCode: "", description: "" });
+          fetchProducts().then(setProdutosParaBusca).catch(() => {});
         } else {
           await createProduct({
             name: data.name.trim(),
@@ -228,6 +264,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
           });
           await carregarProdutos();
           reset({ name: "", costPrice: 0, profitMargin: 0, price: 0, supplierCode: "", description: "" });
+          fetchProducts().then(setProdutosParaBusca).catch(() => {});
         }
       } catch (e) {
         setErroSubmit(e instanceof Error ? e.message : "Erro ao salvar produto.");
@@ -305,7 +342,7 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
         <div className="p-6">
           {erroLista && <div className="mb-4"><Alert message={erroLista} variant="error" /></div>}
           {!loadingLista && produtos.length > 0 && (
-            <div className="mb-4">
+            <div className="relative mb-4 max-w-md">
               <label htmlFor="filter-nome-sku" className="flex items-center gap-2 text-xs font-medium text-slate-500">
                 <Search className="h-4 w-4" aria-hidden />
                 Filtrar por nome ou código de barras
@@ -315,9 +352,38 @@ export function ProductsPageClient({ initialProducts, initialMeta }: ProductsPag
                 type="text"
                 value={filterNomeBarcode}
                 onChange={(e) => setFilterNomeBarcode(e.target.value)}
+                onFocus={() => filterNomeBarcode.trim() && setFilterSearchResults(filterSearchResults.length ? filterSearchResults : [])}
                 placeholder="Digite nome ou código de barras…"
-                className="input-field mt-1 max-w-md"
+                className="input-field mt-1 w-full"
+                autoComplete="off"
               />
+              {filterSearchResults.length > 0 && filterNomeBarcode.trim() && (
+                <ul
+                  className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {filterSearchResults.map((p) => (
+                    <li key={p.id} role="option">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleSelecionarProduto(p.id);
+                          setFilterNomeBarcode("");
+                          setFilterSearchResults([]);
+                        }}
+                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-medium text-slate-800">{p.name}</span>
+                        <span className="text-xs text-slate-500">
+                          {p.barcode ? `Cod. barras: ${p.barcode}` : ""}
+                          {p.barcode && p.sku ? " · " : ""}
+                          {p.sku ? `SKU: ${p.sku}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
           {loadingLista ? (
@@ -399,37 +465,53 @@ disabled={!meta.hasPreviousPage}
           </h2>
         </div>
         <div className="p-6 space-y-6">
-          {/* Bloco: Verificar produto */}
+          {/* Bloco: Buscar produto (nome, código de barras ou código do fornecedor) — mesma lógica da tela Etiquetas */}
           <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
             <h3 className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-            <Barcode className="h-4 w-4" aria-hidden />
-            Verificar produto
-          </h3>
+              <Barcode className="h-4 w-4" aria-hidden />
+              Buscar produto
+            </h3>
             {erroVerificacao && <div className="mt-3"><Alert message={erroVerificacao} variant="error" /></div>}
-            <div className="mt-3 flex flex-wrap items-end gap-3">
-              <div className="min-w-[180px] flex-1">
-                <label htmlFor="supplier-code-verify" className="block text-sm font-medium text-slate-700">
-                  Código do fornecedor
-                </label>
-                <input
-                  id="supplier-code-verify"
-                  type="text"
-                  value={supplierCodeInput}
-                  onChange={(e) => setSupplierCodeInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleVerificarSupplierCode())}
-                  placeholder="Ex.: FORN-12345"
-                  className="input-field mt-1 font-mono"
-                  disabled={verificandoSupplierCode}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={handleVerificarSupplierCode}
-                disabled={verificandoSupplierCode}
-                className="btn-secondary rounded-lg px-4 py-2.5 font-medium disabled:opacity-50"
-              >
-                {verificandoSupplierCode ? "Verificando…" : "Verificar"}
-              </button>
+            <div className="relative mt-3">
+              <label htmlFor="product-search-verify" className="block text-sm font-medium text-slate-700">
+                Buscar produto (nome, código de barras ou código do fornecedor)
+              </label>
+              <input
+                id="product-search-verify"
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onFocus={() => searchInput.trim() && setSearchResults(searchResults.length ? searchResults : [])}
+                placeholder="Nome, código de barras ou código do fornecedor…"
+                className="input-field mt-1 w-full"
+                disabled={loadingProdutosParaBusca}
+                autoComplete="off"
+              />
+              {searchResults.length > 0 && searchInput.trim() && (
+                <ul
+                  className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {searchResults.map((p) => (
+                    <li key={p.id} role="option">
+                      <button
+                        type="button"
+                        onClick={() => handleSelecionarProdutoNaBusca(p)}
+                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-medium text-slate-800">{p.name}</span>
+                        <span className="text-xs text-slate-500">
+                          {p.barcode ? `Cod. barras: ${p.barcode}` : ""}
+                          {p.barcode && (p.sku || p.supplierCode) ? " · " : ""}
+                          {p.supplierCode ? `Fornec.: ${p.supplierCode}` : ""}
+                          {p.supplierCode && p.sku ? " · " : ""}
+                          {p.sku ? `SKU: ${p.sku}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             {produtoEncontrado && !editingId && (
               <div className="mt-4 rounded-lg border-2 border-amber-200 bg-amber-50 p-4">
@@ -447,12 +529,12 @@ disabled={!meta.hasPreviousPage}
                     Editar produto
                   </button>
                   <button type="button" onClick={handleVerificarOutro} className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50">
-                    Verificar outro
+                    Buscar outro
                   </button>
                 </div>
               </div>
             )}
-            {supplierCodeInput.trim() && !verificandoSupplierCode && !produtoEncontrado && !editingId && (
+            {searchInput.trim() && searchResults.length === 0 && !produtoEncontrado && !editingId && !loadingProdutosParaBusca && (
               <p className="mt-3 text-sm text-emerald-700">
                 Produto não encontrado. Você pode cadastrar abaixo.
               </p>

@@ -100,6 +100,8 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
   const hasRestoredDraft = useRef(false);
   const barcodeInputRef = useRef<HTMLInputElement>(null);
   const focusBarcodeAfterScanRef = useRef(false);
+  const barcodeSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [barcodeSearchResults, setBarcodeSearchResults] = useState<Product[]>([]);
   const qtyParaNovoProdutoRef = useRef(1);
 
   const [showModalNovoProduto, setShowModalNovoProduto] = useState(false);
@@ -169,6 +171,27 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
   useEffect(() => {
     if (initialProducts.length === 0) carregarProdutos();
   }, [initialProducts.length, carregarProdutos]);
+
+  // Dropdown do input "Itens do pedido": filtro só por código de barras ou código do fornecedor (300ms debounce)
+  useEffect(() => {
+    const term = barcodeInput.trim().toLowerCase();
+    if (!term) {
+      setBarcodeSearchResults([]);
+      return;
+    }
+    if (barcodeSearchTimeoutRef.current) clearTimeout(barcodeSearchTimeoutRef.current);
+    barcodeSearchTimeoutRef.current = setTimeout(() => {
+      const filtered = produtos.filter(
+        (p) =>
+          (p.barcode?.toLowerCase().includes(term) ?? false) ||
+          (p.supplierCode?.toLowerCase().includes(term) ?? false)
+      );
+      setBarcodeSearchResults(filtered);
+    }, 300);
+    return () => {
+      if (barcodeSearchTimeoutRef.current) clearTimeout(barcodeSearchTimeoutRef.current);
+    };
+  }, [barcodeInput, produtos]);
 
   const handleSelecionarPedido = useCallback(async (id: string) => {
     setErroDetalhe(null);
@@ -271,6 +294,23 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
       }
     }
   }, [buscandoBarcode]);
+
+  function handleSelecionarProdutoNoPedido(p: Product) {
+    setBarcodeSearchResults([]);
+    setBarcodeInput("");
+    setErro(null);
+    setLinhas((prev) => {
+      const idx = prev.findIndex((l) => l.itemId === p.id);
+      if (idx >= 0) {
+        const next = [...prev];
+        next[idx] = { ...next[idx], quantity: next[idx].quantity + qtyNum };
+        return next;
+      }
+      return [...prev, { itemId: p.id, quantity: qtyNum }];
+    });
+    setQuantidade("1");
+    focusBarcodeAfterScanRef.current = true;
+  }
 
   function handleRemoverLinha(itemId: string) {
     setLinhas((prev) => prev.filter((l) => l.itemId !== itemId));
@@ -610,7 +650,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
             Itens do pedido
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            <div>
+            <div className="relative">
               <label htmlFor="stock-barcode" className="block text-sm font-medium text-slate-700">
                 Código de barras ou código do fornecedor
               </label>
@@ -620,6 +660,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
                 type="text"
                 value={barcodeInput}
                 onChange={(e) => setBarcodeInput(e.target.value)}
+                onFocus={() => barcodeInput.trim() && setBarcodeSearchResults(barcodeSearchResults.length ? barcodeSearchResults : [])}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
@@ -627,10 +668,35 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
                   }
                 }}
                 placeholder="Leia ou digite código de barras ou código do fornecedor"
-                className="input-field mt-1"
+                className="input-field mt-1 w-full"
                 disabled={loading || buscandoBarcode}
                 autoComplete="off"
               />
+              {barcodeSearchResults.length > 0 && barcodeInput.trim() && (
+                <ul
+                  className="absolute z-10 mt-1 max-h-48 w-full overflow-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg"
+                  role="listbox"
+                >
+                  {barcodeSearchResults.map((p) => (
+                    <li key={p.id} role="option">
+                      <button
+                        type="button"
+                        onClick={() => handleSelecionarProdutoNoPedido(p)}
+                        className="flex w-full flex-col items-start gap-0.5 px-3 py-2 text-left text-sm hover:bg-slate-50"
+                      >
+                        <span className="font-medium text-slate-800">{p.name}</span>
+                        <span className="text-xs text-slate-500">
+                          {p.barcode ? `Cod. barras: ${p.barcode}` : ""}
+                          {p.barcode && (p.sku || p.supplierCode) ? " · " : ""}
+                          {p.supplierCode ? `Fornec.: ${p.supplierCode}` : ""}
+                          {p.supplierCode && p.sku ? " · " : ""}
+                          {p.sku ? `SKU: ${p.sku}` : ""}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div>
               <label htmlFor="stock-qty" className="block text-sm font-medium text-slate-700">
