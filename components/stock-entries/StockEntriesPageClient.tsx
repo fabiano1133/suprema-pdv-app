@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Barcode, Plus, ListOrdered } from "lucide-react";
-import { fetchProducts, findProductBySupplierCode, createProduct } from "@/lib/api/products";
+import { fetchProducts, findProductByBarcode, createProduct } from "@/lib/api/products";
 import { createStockEntry, fetchStockEntries, fetchStockEntryById, updateStockEntry, type StockEntry, type StockEntryLine } from "@/lib/api/stockEntries";
 import type { Product } from "@/lib/types";
 import { formatDateBr } from "@/lib/utils/dateBr";
@@ -89,17 +89,17 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
   const [erroDetalhe, setErroDetalhe] = useState<string | null>(null);
   const [reference, setReference] = useState("");
   const [supplier, setSupplier] = useState("");
-  const [supplierCodeInput, setSupplierCodeInput] = useState("");
+  const [barcodeInput, setBarcodeInput] = useState("");
   const [quantidade, setQuantidade] = useState("1");
   const [linhas, setLinhas] = useState<StockEntryLine[]>([]);
   const [loading, setLoading] = useState(false);
-  const [buscandoSupplierCode, setBuscandoSupplierCode] = useState(false);
+  const [buscandoBarcode, setBuscandoBarcode] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sucesso, setSucesso] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const hasRestoredDraft = useRef(false);
-  const supplierCodeInputRef = useRef<HTMLInputElement>(null);
-  const focusSupplierCodeAfterScanRef = useRef(false);
+  const barcodeInputRef = useRef<HTMLInputElement>(null);
+  const focusBarcodeAfterScanRef = useRef(false);
   const qtyParaNovoProdutoRef = useRef(1);
 
   const [showModalNovoProduto, setShowModalNovoProduto] = useState(false);
@@ -213,21 +213,21 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
 
   const qtyNum = Math.max(1, Number(quantidade) || 1);
 
-  async function handleAdicionarPorSupplierCode(e: React.MouseEvent | React.FormEvent) {
+  async function handleAdicionarPorBarcode(e: React.MouseEvent | React.FormEvent) {
     e.preventDefault();
-    const code = supplierCodeInput.trim();
-    if (!code) {
-      setErro("Informe o código do fornecedor.");
+    const barcode = barcodeInput.trim();
+    if (!barcode) {
+      setErro("Informe o código de barras.");
       return;
     }
     setErro(null);
     setSucesso(null);
-    setBuscandoSupplierCode(true);
+    setBuscandoBarcode(true);
     try {
-      const produto = await findProductBySupplierCode(code);
+      const produto = await findProductByBarcode(barcode);
       if (!produto) {
         qtyParaNovoProdutoRef.current = qtyNum;
-        setSupplierCodeParaCadastro(code);
+        setSupplierCodeParaCadastro("");
         setNomeNovoProduto("");
         setCostPriceNovo(0);
         setProfitMarginNovo(0);
@@ -238,7 +238,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         setShowModalNovoProduto(true);
         return;
       }
-      focusSupplierCodeAfterScanRef.current = true;
+      focusBarcodeAfterScanRef.current = true;
       setLinhas((prev) => {
         const idx = prev.findIndex((l) => l.itemId === produto.id);
         if (idx >= 0) {
@@ -248,19 +248,19 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         }
         return [...prev, { itemId: produto.id, quantity: qtyNum }];
       });
-      setSupplierCodeInput("");
+      setBarcodeInput("");
       setQuantidade("1");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao buscar produto.");
     } finally {
-      setBuscandoSupplierCode(false);
+      setBuscandoBarcode(false);
     }
   }
 
   useEffect(() => {
-    if (!buscandoSupplierCode && focusSupplierCodeAfterScanRef.current) {
-      focusSupplierCodeAfterScanRef.current = false;
-      const el = supplierCodeInputRef.current;
+    if (!buscandoBarcode && focusBarcodeAfterScanRef.current) {
+      focusBarcodeAfterScanRef.current = false;
+      const el = barcodeInputRef.current;
       if (el) {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -269,7 +269,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         });
       }
     }
-  }, [buscandoSupplierCode]);
+  }, [buscandoBarcode]);
 
   function handleRemoverLinha(itemId: string) {
     setLinhas((prev) => prev.filter((l) => l.itemId !== itemId));
@@ -321,9 +321,9 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
         }
         return [...prev, { itemId: novo.id, quantity: qty }];
       });
-      setSupplierCodeInput("");
+      setBarcodeInput("");
       setQuantidade("1");
-      focusSupplierCodeAfterScanRef.current = true;
+      focusBarcodeAfterScanRef.current = true;
       setSucesso("Produto cadastrado e adicionado ao pedido.");
       handleFecharModalNovoProduto();
     } catch (err) {
@@ -395,7 +395,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
               Produto não encontrado — Cadastrar
             </h2>
             <p className="mb-4 text-sm text-slate-600">
-              O código do fornecedor <span className="font-mono font-medium">{supplierCodeParaCadastro}</span> não está cadastrado. Preencha os dados para criar o produto e adicioná-lo ao pedido.
+              O código de barras informado não está cadastrado. Preencha os dados para criar o produto e adicioná-lo ao pedido.
             </p>
             <form onSubmit={handleCadastrarProdutoNoModal}>
               {erroModal && <div className="mb-4"><Alert message={erroModal} variant="error" /></div>}
@@ -610,24 +610,24 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label htmlFor="stock-supplier-code" className="block text-sm font-medium text-slate-700">
-                Código do fornecedor
+              <label htmlFor="stock-barcode" className="block text-sm font-medium text-slate-700">
+                Código de barras
               </label>
               <input
-                ref={supplierCodeInputRef}
-                id="stock-supplier-code"
+                ref={barcodeInputRef}
+                id="stock-barcode"
                 type="text"
-                value={supplierCodeInput}
-                onChange={(e) => setSupplierCodeInput(e.target.value)}
+                value={barcodeInput}
+                onChange={(e) => setBarcodeInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     e.preventDefault();
-                    handleAdicionarPorSupplierCode(e);
+                    handleAdicionarPorBarcode(e);
                   }
                 }}
-                placeholder="Leia ou digite o código do fornecedor"
+                placeholder="Leia ou digite o código de barras"
                 className="input-field mt-1"
-                disabled={loading || buscandoSupplierCode}
+                disabled={loading || buscandoBarcode}
                 autoComplete="off"
               />
             </div>
@@ -651,11 +651,11 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
           <div className="mt-3">
             <button
               type="button"
-              onClick={handleAdicionarPorSupplierCode}
-              disabled={!supplierCodeInput.trim() || loading || buscandoSupplierCode}
+              onClick={handleAdicionarPorBarcode}
+              disabled={!barcodeInput.trim() || loading || buscandoBarcode}
               className="btn-secondary flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
-              {buscandoSupplierCode ? "Buscando…" : (
+              {buscandoBarcode ? "Buscando…" : (
                 <>
                   <Plus className="h-4 w-4" aria-hidden />
                   Adicionar à lista
