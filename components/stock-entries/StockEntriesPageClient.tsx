@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Package, Barcode, Plus, ListOrdered } from "lucide-react";
-import { fetchProducts, findProductByBarcode, createProduct } from "@/lib/api/products";
+import { fetchProducts, findProductByBarcode, findProductBySupplierCode, createProduct } from "@/lib/api/products";
 import { createStockEntry, fetchStockEntries, fetchStockEntryById, updateStockEntry, type StockEntry, type StockEntryLine } from "@/lib/api/stockEntries";
 import type { Product } from "@/lib/types";
 import { formatDateBr } from "@/lib/utils/dateBr";
@@ -215,19 +215,20 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
 
   async function handleAdicionarPorBarcode(e: React.MouseEvent | React.FormEvent) {
     e.preventDefault();
-    const barcode = barcodeInput.trim();
-    if (!barcode) {
-      setErro("Informe o código de barras.");
+    const codigo = barcodeInput.trim();
+    if (!codigo) {
+      setErro("Informe o código de barras ou código do fornecedor.");
       return;
     }
     setErro(null);
     setSucesso(null);
     setBuscandoBarcode(true);
     try {
-      const produto = await findProductByBarcode(barcode);
+      let produto = await findProductByBarcode(codigo);
+      if (!produto) produto = await findProductBySupplierCode(codigo);
       if (!produto) {
         qtyParaNovoProdutoRef.current = qtyNum;
-        setSupplierCodeParaCadastro("");
+        setSupplierCodeParaCadastro(codigo);
         setNomeNovoProduto("");
         setCostPriceNovo(0);
         setProfitMarginNovo(0);
@@ -395,7 +396,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
               Produto não encontrado — Cadastrar
             </h2>
             <p className="mb-4 text-sm text-slate-600">
-              O código de barras informado não está cadastrado. Preencha os dados para criar o produto e adicioná-lo ao pedido.
+              O código informado não está cadastrado. Preencha os dados para criar o produto e adicioná-lo ao pedido.
             </p>
             <form onSubmit={handleCadastrarProdutoNoModal}>
               {erroModal && <div className="mb-4"><Alert message={erroModal} variant="error" /></div>}
@@ -611,7 +612,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label htmlFor="stock-barcode" className="block text-sm font-medium text-slate-700">
-                Código de barras
+                Código de barras ou código do fornecedor
               </label>
               <input
                 ref={barcodeInputRef}
@@ -625,7 +626,7 @@ export function StockEntriesPageClient({ initialProducts }: StockEntriesPageClie
                     handleAdicionarPorBarcode(e);
                   }
                 }}
-                placeholder="Leia ou digite o código de barras"
+                placeholder="Leia ou digite código de barras ou código do fornecedor"
                 className="input-field mt-1"
                 disabled={loading || buscandoBarcode}
                 autoComplete="off"
